@@ -40,6 +40,11 @@
             font-size: 1.2rem;
             color: #28a745;
         }
+        .logout {
+            margin-top: 20px;
+            color: #dc3545;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -54,6 +59,7 @@
         <div id="scannerSection" style="display: none;">
             <div id="reader"></div>
             <p class="message" id="scanMessage"></p>
+            <button id="logoutButton" class="btn btn-danger">Cerrar Sesión</button>
         </div>
     </div>
 
@@ -80,9 +86,24 @@
         const emailInput = document.getElementById("email");
         const passwordInput = document.getElementById("password");
         const loginButton = document.getElementById("loginButton");
+        const logoutButton = document.getElementById("logoutButton");
         const authSection = document.getElementById("authSection");
         const scannerSection = document.getElementById("scannerSection");
         const scanMessage = document.getElementById("scanMessage");
+
+        // Verificar si hay una sesión activa
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                // Usuario autenticado
+                authSection.style.display = "none";
+                scannerSection.style.display = "block";
+                startScanner();
+            } else {
+                // No hay usuario autenticado
+                authSection.style.display = "block";
+                scannerSection.style.display = "none";
+            }
+        });
 
         // Inicio de sesión
         loginButton.addEventListener("click", () => {
@@ -92,9 +113,6 @@
             auth.signInWithEmailAndPassword(email, password)
                 .then(() => {
                     alert("Inicio de sesión exitoso.");
-                    authSection.style.display = "none";
-                    scannerSection.style.display = "block";
-                    startScanner();
                 })
                 .catch(error => {
                     console.error("Error iniciando sesión:", error);
@@ -102,67 +120,75 @@
                 });
         });
 
+        // Cerrar sesión
+        logoutButton.addEventListener("click", () => {
+            auth.signOut().then(() => {
+                alert("Sesión cerrada exitosamente.");
+            }).catch(error => {
+                console.error("Error cerrando sesión:", error);
+            });
+        });
 
         let isScanning = false;
         // Función para iniciar el escáner QR
         function startScanner() {
-    const qrCodeScanner = new Html5Qrcode("reader");
+            const qrCodeScanner = new Html5Qrcode("reader");
 
-    qrCodeScanner.start(
-        { facingMode: "environment" },
-        {
-            fps: 10,
-            qrbox: 250
-        },
-        (decodedText) => {
-            if (!isScanning) {
-                isScanning = true; // Evita múltiples lecturas
-                console.log("Código escaneado:", decodedText);
-                scanMessage.textContent = `Código escaneado: ${decodedText}`;
-                registerPurchase(decodedText).finally(() => {
-                    setTimeout(() => {
-                        isScanning = false; // Permite escanear nuevamente después de un tiempo
-                    }, 2000); // 2 segundos de espera
-                });
-            }
-        },
-        (error) => {
-            console.warn("Error escaneando QR:", error);
-            scanMessage.textContent = "No se pudo leer el código QR. Intenta nuevamente.";
+            qrCodeScanner.start(
+                { facingMode: "environment" },
+                {
+                    fps: 10,
+                    qrbox: 250
+                },
+                (decodedText) => {
+                    if (!isScanning) {
+                        isScanning = true; // Evita múltiples lecturas
+                        console.log("Código escaneado:", decodedText);
+                        scanMessage.textContent = `Código escaneado: ${decodedText}`;
+                        registerPurchase(decodedText).finally(() => {
+                            setTimeout(() => {
+                                isScanning = false; // Permite escanear nuevamente después de un tiempo
+                            }, 2000); // 2 segundos de espera
+                        });
+                    }
+                },
+                (error) => {
+                    console.warn("Error escaneando QR:", error);
+                    scanMessage.textContent = "No se pudo leer el código QR. Intenta nuevamente.";
+                }
+            ).catch((error) => {
+                alert("Error al iniciar el escáner QR. Intente recargar la página.");
+                console.error("Error al iniciar Html5Qrcode:", error);
+            });
         }
-    ).catch((error) => {
-        alert("Error al iniciar el escáner QR. Intente recargar la página.");
-        console.error("Error al iniciar Html5Qrcode:", error);
-    });
-}
 
         // Registrar compra
         function registerPurchase(userId) {
-        console.log("Intentando registrar compra para userId:", userId);
+            console.log("Intentando registrar compra para userId:", userId);
 
-        db.collection("loyaltyCards").doc(userId).get().then(doc => {
-            if (doc.exists) {
-                let purchases = doc.data().purchases;
-                if (purchases < 6) {
-                    purchases++;
-                    db.collection("loyaltyCards").doc(userId).update({ purchases }).then(() => {
-                        alert("Compra registrada exitosamente.");
-                        scanMessage.textContent = "Compra registrada exitosamente.";
-                    });
+            db.collection("loyaltyCards").doc(userId).get().then(doc => {
+                if (doc.exists) {
+                    let purchases = doc.data().purchases;
+                    if (purchases < 6) {
+                        purchases++;
+                        db.collection("loyaltyCards").doc(userId).update({ purchases }).then(() => {
+                            alert("Compra registrada exitosamente.");
+                            scanMessage.textContent = "Compra registrada exitosamente.";
+                        });
+                    } else {
+                        alert("El cliente ya tiene el descuento disponible.");
+                        scanMessage.textContent = "El cliente ya tiene el descuento disponible.";
+                    }
                 } else {
-                    alert("El cliente ya tiene el descuento disponible.");
-                    scanMessage.textContent = "El cliente ya tiene el descuento disponible.";
+                    alert("Usuario no encontrado en Firestore.");
+                    scanMessage.textContent = "Usuario no encontrado en Firestore.";
                 }
-            } else {
-                alert("Usuario no encontrado en Firestore.");
-                scanMessage.textContent = "Usuario no encontrado en Firestore.";
-            }
-        }).catch(error => {
-            console.error("Error registrando compra:", error);
-            alert("Hubo un error al registrar la compra: " + error.message);
-            scanMessage.textContent = "Error al registrar la compra.";
-        });
-    }
+            }).catch(error => {
+                console.error("Error registrando compra:", error);
+                alert("Hubo un error al registrar la compra: " + error.message);
+                scanMessage.textContent = "Error al registrar la compra.";
+            });
+        }
     </script>
 </body>
 </html>
