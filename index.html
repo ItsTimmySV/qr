@@ -69,7 +69,13 @@
         // Escáner QR
         const scanMessage = document.getElementById("scanMessage");
 
-        if (typeof Html5Qrcode !== "undefined") {
+        document.addEventListener("DOMContentLoaded", () => {
+            if (typeof Html5Qrcode === "undefined") {
+                alert("No se pudo cargar el escáner QR. Por favor, verifica la conexión.");
+                console.error("Html5Qrcode no está definido.");
+                return;
+            }
+
             const qrCodeScanner = new Html5Qrcode("reader");
 
             qrCodeScanner.start(
@@ -80,16 +86,16 @@
                 },
                 (decodedText) => {
                     scanMessage.textContent = `Código escaneado: ${decodedText}`;
-                    registerPurchase(decodedText); // Llamar a la función para registrar la compra
+                    registerPurchase(decodedText);
                 },
                 (error) => {
                     console.warn("Error escaneando QR:", error);
                 }
-            );
-        } else {
-            console.error("Html5Qrcode no está definido. Verifica la carga del script.");
-            alert("Error al cargar el escáner QR. Intente recargar la página.");
-        }
+            ).catch((error) => {
+                alert("Error al iniciar el escáner QR. Intente recargar la página.");
+                console.error("Error al iniciar Html5Qrcode:", error);
+            });
+        });
 
         // Registrar compra
         function registerPurchase(userId) {
