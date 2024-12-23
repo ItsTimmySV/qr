@@ -71,6 +71,7 @@
                 Iniciar Sesión
             </button>
         </div>
+
         <!-- Sección de escaneo -->
         <div id="scannerSection" style="display: none;">
             <div id="reader"></div>
@@ -119,7 +120,7 @@
         let isScanning = false;
         let qrCodeScanner = null;
 
-        // 5 puntos por cada $1 => 5/100 = 0.05 (5%) (si 100 puntos = $1)
+        // EJEMPLO: 5 puntos / $1 => 5% si en la tarjeta 100 puntos = $1
         const RATE_PER_DOLLAR = 5;
 
         auth.onAuthStateChanged((user) => {
@@ -159,7 +160,6 @@
                 });
         });
 
-        // Iniciar escáner
         function startScanner() {
             if (qrCodeScanner) return;
             qrCodeScanner = new Html5Qrcode("reader");
@@ -180,7 +180,6 @@
                 });
         }
 
-        // Detener escáner
         function stopScanner() {
             if (qrCodeScanner) {
                 qrCodeScanner.stop().then(() => {
@@ -190,13 +189,13 @@
             }
         }
 
-        // Al obtener un resultado del QR
         function onScanSuccess(decodedText) {
             if (!isScanning) {
                 isScanning = true;
                 console.log("Código escaneado:", decodedText);
                 scanMessage.textContent = `Código escaneado: ${decodedText}`;
 
+                // Pide el monto de la compra
                 const purchaseAmountStr = prompt("Ingrese el monto de la compra:");
                 const purchaseAmount = parseFloat(purchaseAmountStr);
                 if (isNaN(purchaseAmount) || purchaseAmount <= 0) {
@@ -206,7 +205,6 @@
                     return;
                 }
 
-                // Registrar
                 registerPurchase(decodedText, purchaseAmount).finally(() => {
                     setTimeout(() => {
                         resetScanning();
@@ -219,7 +217,7 @@
             isScanning = false;
         }
 
-        // Registrar compra
+        // Aquí manejamos la lógica de canjear o sumar puntos
         function registerPurchase(userId, amountSpent) {
             scanMessage.textContent = "Registrando compra...";
 
@@ -234,27 +232,52 @@
                     let data = doc.data();
                     let purchases = data.purchases || 0;
                     let points = data.points || 0;
+                    let redeemRequest = data.redeemRequest || false;
 
-                    // Suma 1 compra solo si < 6
+                    // 1) Verificar si el usuario solicitó canje de cashback
+                    if (redeemRequest) {
+                        // Preguntar al negocio si desea canjear
+                        const confirmRedeem = confirm(
+                            "El cliente solicitó canjear su cashback. ¿Deseas resetear sus puntos a 0?"
+                        );
+                        if (confirmRedeem) {
+                            // Reseteamos points y redeemRequest
+                            return db.collection("loyaltyCards").doc(userId)
+                                .update({ points: 0, redeemRequest: false })
+                                .then(() => {
+                                    alert("Cashback canjeado. Puntos reiniciados a 0.");
+                                    scanMessage.textContent = "Puntos reiniciados a 0.";
+                                });
+                        } else {
+                            // No canjeamos => no sumamos tampoco
+                            alert("Canje de cashback cancelado por el negocio.");
+                            scanMessage.textContent = "Canje de cashback cancelado.";
+                            return;
+                        }
+                    }
+
+                    // 2) Si NO solicitó canje, sumamos 1 compra (máx 6) y puntos
                     if (purchases < 6) {
                         purchases++;
                     } else {
                         console.log("El cliente ya llegó a 6 compras (puede canjear).");
                     }
 
-                    // Calcula puntos (5 * monto)
+                    // Sumar puntos
                     const pointsEarned = Math.floor(amountSpent * RATE_PER_DOLLAR);
                     points += pointsEarned;
 
-                    return db.collection("loyaltyCards").doc(userId).update({
-                        purchases,
-                        points
-                    }).then(() => {
-                        alert(
-                            `Compra registrada. +1 compra (máx 6) y +${pointsEarned} puntos.`
-                        );
-                        scanMessage.textContent = "Compra registrada correctamente.";
-                    });
+                    return db.collection("loyaltyCards").doc(userId)
+                        .update({
+                            purchases,
+                            points
+                        })
+                        .then(() => {
+                            alert(
+                                `Compra registrada. +1 compra (máx 6) y +${pointsEarned} puntos.`
+                            );
+                            scanMessage.textContent = "Compra registrada correctamente.";
+                        });
                 })
                 .catch((error) => {
                     console.error("Error registrando compra:", error);
