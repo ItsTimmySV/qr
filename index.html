@@ -119,25 +119,22 @@
         let isScanning = false;
         let qrCodeScanner = null;
 
-        // EJEMPLO: 500 puntos por cada $1
-        const RATE_PER_DOLLAR = 100;
+        // 5 puntos por cada $1 => 5/100 = 0.05 (5%) (si 100 puntos = $1)
+        const RATE_PER_DOLLAR = 5;
 
-        // Observador de Auth
         auth.onAuthStateChanged((user) => {
             if (user) {
-                // Usuario autenticado
                 authSection.style.display = "none";
                 scannerSection.style.display = "block";
                 startScanner();
             } else {
-                // No hay usuario autenticado
                 authSection.style.display = "block";
                 scannerSection.style.display = "none";
                 stopScanner();
             }
         });
 
-        // Inicio de sesión
+        // Login
         loginButton.addEventListener("click", () => {
             const email = emailInput.value;
             const password = passwordInput.value;
@@ -151,7 +148,7 @@
                 });
         });
 
-        // Cerrar sesión
+        // Logout
         logoutButton.addEventListener("click", () => {
             auth.signOut()
                 .then(() => {
@@ -162,17 +159,14 @@
                 });
         });
 
-        // Función para iniciar el escáner
+        // Iniciar escáner
         function startScanner() {
-            if (qrCodeScanner) return; // Evita reiniciar si ya está activo
+            if (qrCodeScanner) return;
             qrCodeScanner = new Html5Qrcode("reader");
             qrCodeScanner
                 .start(
                     { facingMode: "environment" },
-                    {
-                        fps: 10,
-                        qrbox: 250,
-                    },
+                    { fps: 10, qrbox: 250 },
                     (decodedText) => onScanSuccess(decodedText),
                     (error) => {
                         console.warn("Error escaneando QR:", error);
@@ -186,7 +180,7 @@
                 });
         }
 
-        // Detener el escáner (cuando cierra sesión)
+        // Detener escáner
         function stopScanner() {
             if (qrCodeScanner) {
                 qrCodeScanner.stop().then(() => {
@@ -196,17 +190,14 @@
             }
         }
 
-        // Manejo del resultado del QR
+        // Al obtener un resultado del QR
         function onScanSuccess(decodedText) {
             if (!isScanning) {
-                isScanning = true; // Evita múltiples lecturas seguidas
+                isScanning = true;
                 console.log("Código escaneado:", decodedText);
                 scanMessage.textContent = `Código escaneado: ${decodedText}`;
 
-                // Aquí pedimos el monto de la compra
-                const purchaseAmountStr = prompt(
-                    "Ingrese el monto de la compra:"
-                );
+                const purchaseAmountStr = prompt("Ingrese el monto de la compra:");
                 const purchaseAmount = parseFloat(purchaseAmountStr);
                 if (isNaN(purchaseAmount) || purchaseAmount <= 0) {
                     alert("Monto inválido. Intenta de nuevo.");
@@ -215,9 +206,8 @@
                     return;
                 }
 
-                // Intentar registrar la compra y sumar puntos
+                // Registrar
                 registerPurchase(decodedText, purchaseAmount).finally(() => {
-                    // Permitir otro escaneo después de 2 segundos
                     setTimeout(() => {
                         resetScanning();
                     }, 2000);
@@ -225,24 +215,19 @@
             }
         }
 
-        // Reset de variables para re-escanear
         function resetScanning() {
             isScanning = false;
         }
 
-        // Registrar la compra en Firestore
+        // Registrar compra
         function registerPurchase(userId, amountSpent) {
             scanMessage.textContent = "Registrando compra...";
 
-            return db
-                .collection("loyaltyCards")
-                .doc(userId)
-                .get()
+            return db.collection("loyaltyCards").doc(userId).get()
                 .then((doc) => {
                     if (!doc.exists) {
                         alert("Usuario no encontrado en Firestore.");
-                        scanMessage.textContent =
-                            "Usuario no encontrado en Firestore.";
+                        scanMessage.textContent = "Usuario no encontrado en Firestore.";
                         return;
                     }
 
@@ -250,34 +235,26 @@
                     let purchases = data.purchases || 0;
                     let points = data.points || 0;
 
-                    // Suma 1 compra solo si el usuario tiene menos de 6
+                    // Suma 1 compra solo si < 6
                     if (purchases < 6) {
                         purchases++;
                     } else {
-                        console.log(
-                            "El cliente ya llegó a 6 compras (puede canjear)."
-                        );
+                        console.log("El cliente ya llegó a 6 compras (puede canjear).");
                     }
 
-                    // Calcula puntos ganados usando el factor de 500
+                    // Calcula puntos (5 * monto)
                     const pointsEarned = Math.floor(amountSpent * RATE_PER_DOLLAR);
                     points += pointsEarned;
 
-                    // Actualiza en Firestore
-                    return db
-                        .collection("loyaltyCards")
-                        .doc(userId)
-                        .update({
-                            purchases,
-                            points,
-                        })
-                        .then(() => {
-                            alert(
-                                `Compra registrada. +1 compra (máx 6) y +${pointsEarned} puntos.`
-                            );
-                            scanMessage.textContent =
-                                "Compra registrada correctamente.";
-                        });
+                    return db.collection("loyaltyCards").doc(userId).update({
+                        purchases,
+                        points
+                    }).then(() => {
+                        alert(
+                            `Compra registrada. +1 compra (máx 6) y +${pointsEarned} puntos.`
+                        );
+                        scanMessage.textContent = "Compra registrada correctamente.";
+                    });
                 })
                 .catch((error) => {
                     console.error("Error registrando compra:", error);
