@@ -1,21 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>TechZone.sv - Panel de Admin</title>
+  <title>TechZone.sv - Panel de Administración</title>
   <style>
     body {
       font-family: 'Arial', sans-serif;
       margin: 20px;
       text-align: center;
     }
+    #admin-auth-container,
+    #admin-content {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    #admin-auth-container h2 {
+      margin-bottom: 10px;
+    }
+    #adminLoginForm input {
+      display: block;
+      margin: 10px auto;
+      padding: 8px;
+      width: 80%;
+      max-width: 300px;
+    }
+    #adminLoginForm button {
+      background: #3498db;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #adminLoginForm button:hover {
+      background: #2980b9;
+    }
+
+    /* Ocultamos el panel de admin por defecto */
+    #admin-content {
+      display: none;
+    }
     #qr-reader {
-      /* Ajustamos para que el contenedor sea más grande */
       width: 100%;
       max-width: 500px; 
       margin: 0 auto;
-    }
-    .admin-container {
-      text-align: center;
+      margin-top: 20px;
     }
     .button {
       background: #3498db;
@@ -33,11 +61,24 @@
   </style>
 </head>
 <body>
-  <div class="admin-container">
+
+  <!-- Contenedor para login de administrador -->
+  <div id="admin-auth-container">
+    <h2>Administrador - Iniciar Sesión</h2>
+    <form id="adminLoginForm">
+      <input type="email" id="adminEmail" placeholder="Correo de administrador" required>
+      <input type="password" id="adminPassword" placeholder="Contraseña" required>
+      <button type="submit">Ingresar</button>
+    </form>
+  </div>
+
+  <!-- Panel de administración (se mostrará tras login) -->
+  <div id="admin-content">
     <h1>Panel de Administración</h1>
     <p>Escanea el QR del cliente para registrar una compra:</p>
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
+    <button id="logoutBtn" class="button" style="margin-top: 20px;">Cerrar Sesión</button>
   </div>
 
   <!-- Firebase SDK (compat) -->
@@ -49,7 +90,9 @@
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <script>
-  // Initialize Firebase (usa la misma config que tu proyecto)
+  // =======================
+  //   Configuración Firebase
+  // =======================
   const firebaseConfig = {
     apiKey: "AIzaSyBV7aFTNp8BNZoT-3kJvOWhrR5fA_mrUos",
     authDomain: "techcard-ac30e.firebaseapp.com",
@@ -63,10 +106,61 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // Puedes agregar un login de administrador si lo deseas
-  // Por simplicidad, asumimos que ya estás autenticado como admin.
+  // =========================
+  //   Variables DOM
+  // =========================
+  const adminAuthContainer = document.getElementById('admin-auth-container');
+  const adminLoginForm = document.getElementById('adminLoginForm');
+  const adminContent = document.getElementById('admin-content');
+  const logoutBtn = document.getElementById('logoutBtn');
 
-  // Función para añadir sello y cashback a un usuario por su UID:
+  // =========================
+  //   Inicio de sesión Admin
+  // =========================
+  adminLoginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('adminEmail').value;
+    const password = document.getElementById('adminPassword').value;
+
+    try {
+      const userCredential = await auth.signInWithEmailAndPassword(email, password);
+      // Si se loguea bien, se revisará en onAuthStateChanged si es "admin" (ver reglas).
+      // Muestra el panel.
+    } catch (error) {
+      alert("Error al iniciar sesión: " + error.message);
+    }
+  });
+
+  // =========================
+  //   Observador de Auth
+  // =========================
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      // Usuario logueado
+      // Muestra panel de admin
+      adminAuthContainer.style.display = 'none';
+      adminContent.style.display = 'block';
+
+      // Iniciamos la cámara (si no la hemos iniciado)
+      startQrScanner();
+    } else {
+      // No está logueado
+      adminAuthContainer.style.display = 'block';
+      adminContent.style.display = 'none';
+    }
+  });
+
+  // =========================
+  //    Logout
+  // =========================
+  logoutBtn.addEventListener('click', async () => {
+    await auth.signOut();
+  });
+
+  // =========================
+  //  Funciones para registrar compra
+  // =========================
+  // Añade sello y cashback a un usuario por su UID:
   async function addStampAndCashbackToUser(uid, purchaseAmount) {
     try {
       const userRef = db.collection('users').doc(uid);
@@ -111,7 +205,7 @@
     }
   }
 
-  // Genera un descuento aleatorio (mismo método que en el cliente)
+  // Descuento aleatorio
   function getRandomDiscount() {
     const rand = Math.random() * 100;
     if (rand < 50) return 10;    // 50% probabilidad
@@ -120,15 +214,19 @@
     return 50;                   // 5% probabilidad
   }
 
-  // Inicializamos el lector de QR
-  document.addEventListener('DOMContentLoaded', () => {
-    const html5QrCode = new Html5Qrcode("qr-reader");
+  // =========================
+  //      Lector de QR
+  // =========================
+  let html5QrCode = null;
+  function startQrScanner() {
+    // Evita reiniciar si ya está inicializado
+    if (html5QrCode) return;
 
+    html5QrCode = new Html5Qrcode("qr-reader");
     function onScanSuccess(decodedText, decodedResult) {
-      // Suponemos que el QR contiene directamente la UID del usuario
-      // Por ej: "abc123uid..."
+      // Suponemos que el QR contiene la UID del usuario
       const uid = decodedText.trim();
-      // Paramos la cámara al obtener un resultado
+      // Detenemos la cámara tras escanear
       html5QrCode.stop();
 
       // Pedimos el monto de la compra
@@ -140,6 +238,16 @@
       } else {
         alert("Monto no válido. Operación cancelada.");
       }
+      // Reiniciamos para escanear otro, si quieres
+      setTimeout(() => {
+        // Se vuelve a iniciar la cámara, p. ej. si quisieras seguir escaneando
+        html5QrCode.start(
+          selectedCameraId,
+          { fps: 10, qrbox: 250 },
+          onScanSuccess,
+          onScanFailure
+        );
+      }, 1000);
     }
 
     function onScanFailure(error) {
@@ -150,36 +258,34 @@
     // Obtenemos lista de cámaras
     Html5Qrcode.getCameras().then((devices) => {
       if (devices && devices.length) {
-        // Intentamos forzar la cámara trasera (buscando 'back' en el label)
-        let cameraId = devices[0].id; // Por defecto la primera
+        // Intentamos forzar la cámara trasera (buscando 'back' o 'rear')
+        let selectedCameraId = devices[0].id;
         for (let i = 0; i < devices.length; i++) {
           const label = devices[i].label.toLowerCase();
           if (label.includes('back') || label.includes('rear')) {
-            cameraId = devices[i].id;
+            selectedCameraId = devices[i].id;
             break;
           }
         }
 
         // Iniciamos el escáner con la cámara seleccionada
         html5QrCode.start(
-          cameraId,
-          {
-            fps: 10,
-            qrbox: 250
-          },
+          selectedCameraId,
+          { fps: 10, qrbox: 250 },
           onScanSuccess,
           onScanFailure
         )
         .catch((err) => {
           alert("No se pudo acceder a la cámara: " + err);
         });
+
       } else {
         alert("No se encontró ninguna cámara disponible.");
       }
     }).catch((err) => {
       alert("No se pudo acceder a la cámara: " + err);
     });
-  });
+  }
   </script>
 </body>
 </html>
