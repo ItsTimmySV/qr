@@ -6,9 +6,12 @@
     body {
       font-family: 'Arial', sans-serif;
       margin: 20px;
+      text-align: center;
     }
     #qr-reader {
-      width: 300px;
+      /* Ajustamos para que el contenedor sea más grande */
+      width: 100%;
+      max-width: 500px; 
       margin: 0 auto;
     }
     .admin-container {
@@ -33,7 +36,6 @@
   <div class="admin-container">
     <h1>Panel de Administración</h1>
     <p>Escanea el QR del cliente para registrar una compra:</p>
-    <!-- Contenedor para el escáner -->
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
   </div>
@@ -61,9 +63,9 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // Aquí podrías agregar un login de administrador, si así lo deseas.
+  // Puedes agregar un login de administrador si lo deseas
   // Por simplicidad, asumimos que ya estás autenticado como admin.
-  
+
   // Función para añadir sello y cashback a un usuario por su UID:
   async function addStampAndCashbackToUser(uid, purchaseAmount) {
     try {
@@ -71,7 +73,7 @@
       const userDoc = await userRef.get();
 
       if (!userDoc.exists) {
-        alert("El usuario con UID " + uid + " no existe.");
+        alert("El usuario con UID '" + uid + "' no existe en la base de datos.");
         return;
       }
 
@@ -102,20 +104,20 @@
         currentDiscount: currentDiscount
       });
 
-      alert("Compra registrada. Nuevo total de sellos: " + totalStamps +
-            ". Cashback acumulado: $" + totalCashback.toFixed(2));
+      alert("Compra registrada.\nSello(s): " + totalStamps +
+            "\nCashback acumulado: $" + totalCashback.toFixed(2));
     } catch (error) {
       alert("Error al actualizar al usuario: " + error.message);
     }
   }
 
-  // Copiamos la función de descuento aleatorio:
+  // Genera un descuento aleatorio (mismo método que en el cliente)
   function getRandomDiscount() {
     const rand = Math.random() * 100;
-    if (rand < 50) return 10;     // 50% probabilidad
-    if (rand < 80) return 15;     // 30% probabilidad
-    if (rand < 95) return 25;     // 15% probabilidad
-    return 50;                    // 5% probabilidad
+    if (rand < 50) return 10;    // 50% probabilidad
+    if (rand < 80) return 15;    // 30% probabilidad
+    if (rand < 95) return 25;    // 15% probabilidad
+    return 50;                   // 5% probabilidad
   }
 
   // Inicializamos el lector de QR
@@ -123,14 +125,16 @@
     const html5QrCode = new Html5Qrcode("qr-reader");
 
     function onScanSuccess(decodedText, decodedResult) {
-      // Suponemos que el QR contiene directamente el UID del usuario
-      // Ej: "kHs83M9QW9cnHjXYZ..."
+      // Suponemos que el QR contiene directamente la UID del usuario
+      // Por ej: "abc123uid..."
       const uid = decodedText.trim();
-      html5QrCode.stop(); // Detener la cámara
+      // Paramos la cámara al obtener un resultado
+      html5QrCode.stop();
 
       // Pedimos el monto de la compra
-      const purchaseAmount = parseFloat(prompt("Escaneado UID: " + uid + 
-        "\nIngresa el monto de la compra:"));
+      const purchaseAmount = parseFloat(prompt(
+        "UID escaneado: " + uid + "\nIngresa el monto de la compra:"
+      ));
       if (!isNaN(purchaseAmount) && purchaseAmount > 0) {
         addStampAndCashbackToUser(uid, purchaseAmount);
       } else {
@@ -139,23 +143,38 @@
     }
 
     function onScanFailure(error) {
-      // Puedes manejar los errores de lectura aquí (si lo deseas)
+      // Errores de lectura (normal si no detecta un QR)
+      // console.warn("Escaneo falló: ", error);
     }
 
-    // Iniciamos la cámara (si el usuario da permiso)
+    // Obtenemos lista de cámaras
     Html5Qrcode.getCameras().then((devices) => {
       if (devices && devices.length) {
-        // Escoger la primera cámara
-        var cameraId = devices[0].id;
+        // Intentamos forzar la cámara trasera (buscando 'back' en el label)
+        let cameraId = devices[0].id; // Por defecto la primera
+        for (let i = 0; i < devices.length; i++) {
+          const label = devices[i].label.toLowerCase();
+          if (label.includes('back') || label.includes('rear')) {
+            cameraId = devices[i].id;
+            break;
+          }
+        }
+
+        // Iniciamos el escáner con la cámara seleccionada
         html5QrCode.start(
           cameraId,
           {
-            fps: 10,    // frames por segundo
-            qrbox: 250  // tamaño del recuadro de QR
+            fps: 10,
+            qrbox: 250
           },
           onScanSuccess,
           onScanFailure
-        );
+        )
+        .catch((err) => {
+          alert("No se pudo acceder a la cámara: " + err);
+        });
+      } else {
+        alert("No se encontró ninguna cámara disponible.");
       }
     }).catch((err) => {
       alert("No se pudo acceder a la cámara: " + err);
