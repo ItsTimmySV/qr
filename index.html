@@ -120,11 +120,13 @@
   const logoutBtn = document.getElementById('logoutBtn');
   const purchaseBtn = document.getElementById('purchaseBtn');
   const redeemBtn = document.getElementById('redeemBtn');
-  const qrReaderElement = document.getElementById('qr-reader');
 
-  let html5QrCode = null;        // Instancia para el escáner
-  let selectedCameraId = null;   // ID de cámara trasera
-  let currentMode = null;        // "purchase" o "redeem"
+  let html5QrCode = null;        
+  let selectedCameraId = null;   
+  let currentMode = null;  // "purchase" o "redeem"
+
+  // -- Evitar lecturas múltiples --
+  let isProcessing = false; // Bandera para impedir repeticiones rápidas
 
   // ======== Login Admin ========
   adminLoginForm.addEventListener('submit', async (e) => {
@@ -151,15 +153,14 @@
 
   // ======== Botón Logout ========
   logoutBtn.addEventListener('click', async () => {
-    // Detenemos el escáner solo si estaba activo
     if (html5QrCode && html5QrCode._isScanning) {
       await html5QrCode.stop().catch(err => console.warn(err));
     }
-    html5QrCode = null; // Liberamos la instancia
+    html5QrCode = null; 
     await auth.signOut();
   });
 
-  // ======== Botones: Registrar/Canjear ========
+  // ======== Botones: Registrar / Canjear ========
   purchaseBtn.addEventListener('click', () => {
     currentMode = "purchase";
     startQrScanner();
@@ -170,14 +171,14 @@
     startQrScanner();
   });
 
-  // ======== Inicia la cámara y escáner ========
+  // ======== Inicia / reinicia la cámara y escáner ========
   async function startQrScanner() {
-    // Si no existe instancia, creamos
+    // Reset de la bandera para permitir nueva lectura
+    isProcessing = false;
+
     if (!html5QrCode) {
       html5QrCode = new Html5Qrcode("qr-reader");
     }
-    // Si ya estaba escaneando, no hacemos stop() automáticamente
-    // para evitar el error "Cannot stop, scanner is not running..."
 
     try {
       const devices = await Html5Qrcode.getCameras();
@@ -186,7 +187,7 @@
         return;
       }
 
-      // Buscamos la cámara trasera
+      // Buscar cámara trasera
       selectedCameraId = devices[0].id;
       for (let i = 0; i < devices.length; i++) {
         const label = devices[i].label.toLowerCase();
@@ -196,7 +197,7 @@
         }
       }
 
-      // Iniciamos o reiniciamos escaneo
+      // Iniciamos el escaneo (si ya estaba corriendo, la librería re-inicia)
       await html5QrCode.start(
         selectedCameraId,
         { fps: 10, qrbox: 250 },
@@ -208,25 +209,34 @@
     }
   }
 
-  // Llamado al encontrar un QR
+  // ======== onScanSuccess ========
   async function onScanSuccess(decodedText, decodedResult) {
-    const uid = decodedText.trim();
+    // -- Evitar lecturas múltiples del mismo QR en milisegundos --
+    if (isProcessing) return; 
+    isProcessing = true;
 
-    // Paramos la cámara si estaba activo
+    // Paramos la cámara para no seguir leyendo
     if (html5QrCode && html5QrCode._isScanning) {
       await html5QrCode.stop().catch(err => console.warn(err));
     }
 
+    // Lógica
+    const uid = decodedText.trim();
     if (currentMode === "purchase") {
       registrarCompra(uid);
     } else if (currentMode === "redeem") {
       canjearDescuento(uid);
     }
+
+    // Si quieres volver a escanear inmediatamente después,
+    // puedes volver a iniciar la cámara aquí, 
+    // pero en tu caso parece que con un único escaneo es suficiente.
   }
 
-  // Llamado si no se detecta QR en un frame
+  // ======== onScanFailure ========
   function onScanFailure(error) {
-    // Normal que ocurra. No hacemos nada. 
+    // Se llama repetidamente si no detecta un QR
+    // No hacemos nada
   }
 
   // ======== Registrar Compra ========
@@ -307,6 +317,7 @@
     }
   }
 
+  // ======== getRandomDiscount ========
   function getRandomDiscount() {
     const rand = Math.random() * 100;
     if (rand < 50) return 10;
