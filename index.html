@@ -39,12 +39,24 @@
     #admin-content {
       display: none;
     }
+
+    /* Ajustamos el contenedor del lector para pantallas grandes */
     #qr-reader {
       width: 100%;
-      max-width: 500px; 
+      max-width: 500px;
       margin: 0 auto;
       margin-top: 20px;
     }
+
+    /* Media query para pantallas pequeñas (ej: celular) */
+    @media (max-width: 600px) {
+      #qr-reader {
+        width: 90vw;  /* Ocupará 90% del ancho de la pantalla */
+        max-width: none; /* Quitar límite de 500px */
+        margin-top: 10px;
+      }
+    }
+
     .button {
       background: #3498db;
       color: white;
@@ -52,7 +64,7 @@
       padding: 10px 20px;
       border-radius: 5px;
       cursor: pointer;
-      margin-top: 10px;
+      margin-top: 20px;
       transition: background 0.3s ease;
     }
     .button:hover {
@@ -78,7 +90,7 @@
     <p>Escanea el QR del cliente para registrar una compra:</p>
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
-    <button id="logoutBtn" class="button" style="margin-top: 20px;">Cerrar Sesión</button>
+    <button id="logoutBtn" class="button">Cerrar Sesión</button>
   </div>
 
   <!-- Firebase SDK (compat) -->
@@ -114,6 +126,10 @@
   const adminContent = document.getElementById('admin-content');
   const logoutBtn = document.getElementById('logoutBtn');
 
+  // Globales para el lector
+  let html5QrCode = null;
+  let selectedCameraId = null; // Guardaremos la cámara trasera si existe
+
   // =========================
   //   Inicio de sesión Admin
   // =========================
@@ -123,9 +139,8 @@
     const password = document.getElementById('adminPassword').value;
 
     try {
-      const userCredential = await auth.signInWithEmailAndPassword(email, password);
-      // Si se loguea bien, se revisará en onAuthStateChanged si es "admin" (ver reglas).
-      // Muestra el panel.
+      await auth.signInWithEmailAndPassword(email, password);
+      // Si se loguea bien, onAuthStateChanged se encargará de mostrar el panel.
     } catch (error) {
       alert("Error al iniciar sesión: " + error.message);
     }
@@ -136,7 +151,6 @@
   // =========================
   auth.onAuthStateChanged((user) => {
     if (user) {
-      // Usuario logueado
       // Muestra panel de admin
       adminAuthContainer.style.display = 'none';
       adminContent.style.display = 'block';
@@ -154,13 +168,17 @@
   //    Logout
   // =========================
   logoutBtn.addEventListener('click', async () => {
+    if (html5QrCode) {
+      // Detenemos la cámara antes de cerrar sesión
+      await html5QrCode.stop().catch(err => console.warn(err));
+      html5QrCode = null;
+    }
     await auth.signOut();
   });
 
   // =========================
   //  Funciones para registrar compra
   // =========================
-  // Añade sello y cashback a un usuario por su UID:
   async function addStampAndCashbackToUser(uid, purchaseAmount) {
     try {
       const userRef = db.collection('users').doc(uid);
@@ -198,14 +216,16 @@
         currentDiscount: currentDiscount
       });
 
-      alert("Compra registrada.\nSello(s): " + totalStamps +
-            "\nCashback acumulado: $" + totalCashback.toFixed(2));
+      alert(
+        "Compra registrada.\n" +
+        "Sello(s): " + totalStamps +
+        "\nCashback acumulado: $" + totalCashback.toFixed(2)
+      );
     } catch (error) {
       alert("Error al actualizar al usuario: " + error.message);
     }
   }
 
-  // Descuento aleatorio
   function getRandomDiscount() {
     const rand = Math.random() * 100;
     if (rand < 50) return 10;    // 50% probabilidad
@@ -217,49 +237,46 @@
   // =========================
   //      Lector de QR
   // =========================
-  let html5QrCode = null;
   function startQrScanner() {
-    // Evita reiniciar si ya está inicializado
+    // Si ya tenemos html5QrCode inicializado, no hacemos nada
     if (html5QrCode) return;
 
     html5QrCode = new Html5Qrcode("qr-reader");
-    function onScanSuccess(decodedText, decodedResult) {
-      // Suponemos que el QR contiene la UID del usuario
-      const uid = decodedText.trim();
-      // Detenemos la cámara tras escanear
-      html5QrCode.stop();
 
-      // Pedimos el monto de la compra
-      const purchaseAmount = parseFloat(prompt(
-        "UID escaneado: " + uid + "\nIngresa el monto de la compra:"
-      ));
-      if (!isNaN(purchaseAmount) && purchaseAmount > 0) {
-        addStampAndCashbackToUser(uid, purchaseAmount);
-      } else {
-        alert("Monto no válido. Operación cancelada.");
-      }
-      // Reiniciamos para escanear otro, si quieres
-      setTimeout(() => {
-        // Se vuelve a iniciar la cámara, p. ej. si quisieras seguir escaneando
-        html5QrCode.start(
-          selectedCameraId,
-          { fps: 10, qrbox: 250 },
-          onScanSuccess,
-          onScanFailure
-        );
-      }, 1000);
+    function onScanSuccess(decodedText, decodedResult) {
+      // UID del usuario
+      const uid = decodedText.trim();
+      // Detenemos la cámara temporalmente
+      html5QrCode.stop()
+      .then(() => {
+        // Pedimos el monto de la compra
+        const purchaseAmount = parseFloat(prompt(
+          "UID escaneado: " + uid + "\nIngresa el monto de la compra:"
+        ));
+        if (!isNaN(purchaseAmount) && purchaseAmount > 0) {
+          addStampAndCashbackToUser(uid, purchaseAmount);
+        } else {
+          alert("Monto no válido. Operación cancelada.");
+        }
+      })
+      .catch((err) => {
+        console.warn("Error al parar la cámara:", err);
+      })
+      .finally(() => {
+        // Iniciamos de nuevo la cámara para el siguiente scan
+        restartScanner();
+      });
     }
 
     function onScanFailure(error) {
-      // Errores de lectura (normal si no detecta un QR)
+      // Errores de lectura (normal si no detecta un QR). Ocurre en cada frame sin QR válido
       // console.warn("Escaneo falló: ", error);
     }
 
-    // Obtenemos lista de cámaras
     Html5Qrcode.getCameras().then((devices) => {
       if (devices && devices.length) {
-        // Intentamos forzar la cámara trasera (buscando 'back' o 'rear')
-        let selectedCameraId = devices[0].id;
+        // Intentamos forzar la cámara trasera
+        selectedCameraId = devices[0].id;
         for (let i = 0; i < devices.length; i++) {
           const label = devices[i].label.toLowerCase();
           if (label.includes('back') || label.includes('rear')) {
@@ -268,23 +285,64 @@
           }
         }
 
-        // Iniciamos el escáner con la cámara seleccionada
-        html5QrCode.start(
-          selectedCameraId,
-          { fps: 10, qrbox: 250 },
-          onScanSuccess,
-          onScanFailure
-        )
-        .catch((err) => {
-          alert("No se pudo acceder a la cámara: " + err);
-        });
-
+        // Iniciamos el escáner
+        html5QrCode
+          .start(
+            selectedCameraId,
+            { fps: 10, qrbox: 250 },
+            onScanSuccess,
+            onScanFailure
+          )
+          .catch((err) => {
+            alert("No se pudo acceder a la cámara: " + err);
+          });
       } else {
         alert("No se encontró ninguna cámara disponible.");
       }
-    }).catch((err) => {
+    })
+    .catch((err) => {
       alert("No se pudo acceder a la cámara: " + err);
     });
+  }
+
+  // Función para reiniciar la cámara después de registrar la compra
+  function restartScanner() {
+    if (!html5QrCode || !selectedCameraId) return;
+    html5QrCode.start(
+      selectedCameraId,
+      { fps: 10, qrbox: 250 },
+      (decodedText, decodedResult) => onScanSuccess(decodedText, decodedResult),
+      (error) => onScanFailure(error)
+    )
+    .catch((err) => {
+      console.error("Error al reiniciar el escáner:", err);
+    });
+  }
+
+  // Copiamos las funciones onScanSuccess y onScanFailure fuera para poder llamarlas en restartScanner
+  function onScanSuccess(decodedText, decodedResult) {
+    const uid = decodedText.trim();
+    html5QrCode.stop()
+    .then(() => {
+      const purchaseAmount = parseFloat(prompt(
+        "UID escaneado: " + uid + "\nIngresa el monto de la compra:"
+      ));
+      if (!isNaN(purchaseAmount) && purchaseAmount > 0) {
+        addStampAndCashbackToUser(uid, purchaseAmount);
+      } else {
+        alert("Monto no válido. Operación cancelada.");
+      }
+    })
+    .catch((err) => {
+      console.warn("Error al parar la cámara:", err);
+    })
+    .finally(() => {
+      restartScanner();
+    });
+  }
+
+  function onScanFailure(error) {
+    // Se llama repetidamente si no hay QR o es ilegible
   }
   </script>
 </body>
