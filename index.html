@@ -120,10 +120,11 @@
   const logoutBtn = document.getElementById('logoutBtn');
   const purchaseBtn = document.getElementById('purchaseBtn');
   const redeemBtn = document.getElementById('redeemBtn');
+  const qrReaderElement = document.getElementById('qr-reader');
 
-  let html5QrCode = null;
-  let selectedCameraId = null;
-  let currentMode = null;  // "purchase" o "redeem"
+  let html5QrCode = null;        // Instancia para el escáner
+  let selectedCameraId = null;   // ID de cámara trasera
+  let currentMode = null;        // "purchase" o "redeem"
 
   // ======== Login Admin ========
   adminLoginForm.addEventListener('submit', async (e) => {
@@ -148,15 +149,17 @@
     }
   });
 
+  // ======== Botón Logout ========
   logoutBtn.addEventListener('click', async () => {
-    if (html5QrCode) {
+    // Detenemos el escáner solo si estaba activo
+    if (html5QrCode && html5QrCode._isScanning) {
       await html5QrCode.stop().catch(err => console.warn(err));
-      html5QrCode = null;
     }
+    html5QrCode = null; // Liberamos la instancia
     await auth.signOut();
   });
 
-  // ======== Manejo de Botones ========
+  // ======== Botones: Registrar/Canjear ========
   purchaseBtn.addEventListener('click', () => {
     currentMode = "purchase";
     startQrScanner();
@@ -167,61 +170,66 @@
     startQrScanner();
   });
 
-  // ======== Escáner QR ========
-  function startQrScanner() {
+  // ======== Inicia la cámara y escáner ========
+  async function startQrScanner() {
+    // Si no existe instancia, creamos
     if (!html5QrCode) {
       html5QrCode = new Html5Qrcode("qr-reader");
     }
+    // Si ya estaba escaneando, no hacemos stop() automáticamente
+    // para evitar el error "Cannot stop, scanner is not running..."
 
-    // Paramos la cámara si ya estaba corriendo
-    html5QrCode.stop().catch(err => {/* ignore */});
-
-    // Seleccionar cámara y comenzar
-    Html5Qrcode.getCameras().then((devices) => {
-      if (devices && devices.length) {
-        selectedCameraId = devices[0].id;
-        for (let i = 0; i < devices.length; i++) {
-          const label = devices[i].label.toLowerCase();
-          if (label.includes('back') || label.includes('rear')) {
-            selectedCameraId = devices[i].id;
-            break;
-          }
-        }
-        html5QrCode.start(
-          selectedCameraId,
-          { fps: 10, qrbox: 250 },
-          onScanSuccess,
-          onScanFailure
-        )
-        .catch((err) => {
-          alert("No se pudo acceder a la cámara: " + err);
-        });
-      } else {
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      if (!devices || !devices.length) {
         alert("No se encontró ninguna cámara disponible.");
+        return;
       }
-    })
-    .catch((err) => {
+
+      // Buscamos la cámara trasera
+      selectedCameraId = devices[0].id;
+      for (let i = 0; i < devices.length; i++) {
+        const label = devices[i].label.toLowerCase();
+        if (label.includes('back') || label.includes('rear')) {
+          selectedCameraId = devices[i].id;
+          break;
+        }
+      }
+
+      // Iniciamos o reiniciamos escaneo
+      await html5QrCode.start(
+        selectedCameraId,
+        { fps: 10, qrbox: 250 },
+        onScanSuccess,
+        onScanFailure
+      );
+    } catch (err) {
       alert("No se pudo acceder a la cámara: " + err);
-    });
+    }
   }
 
-  function onScanSuccess(decodedText, decodedResult) {
+  // Llamado al encontrar un QR
+  async function onScanSuccess(decodedText, decodedResult) {
     const uid = decodedText.trim();
-    // Detenemos la cámara para procesar
-    html5QrCode.stop().then(() => {
-      if (currentMode === "purchase") {
-        registrarCompra(uid);
-      } else if (currentMode === "redeem") {
-        canjearDescuento(uid);
-      }
-    });
+
+    // Paramos la cámara si estaba activo
+    if (html5QrCode && html5QrCode._isScanning) {
+      await html5QrCode.stop().catch(err => console.warn(err));
+    }
+
+    if (currentMode === "purchase") {
+      registrarCompra(uid);
+    } else if (currentMode === "redeem") {
+      canjearDescuento(uid);
+    }
   }
 
+  // Llamado si no se detecta QR en un frame
   function onScanFailure(error) {
-    // Ocurre varias veces por segundo si no detecta un QR
+    // Normal que ocurra. No hacemos nada. 
   }
 
-  // ======== Función Registrar Compra ========
+  // ======== Registrar Compra ========
   async function registrarCompra(uid) {
     const purchaseAmount = parseFloat(
       prompt("UID escaneado: " + uid + "\nIngresa el monto de la compra:")
@@ -247,7 +255,7 @@
 
       cashback += purchaseAmount * 0.05;
 
-      // Si llega a 10 sellos y no tenía descuento, asignar uno
+      // Si llega a 10 sellos y no tenía descuento
       if (stamps === 10 && currentDiscount === 0) {
         currentDiscount = getRandomDiscount();
         alert("¡El usuario ha obtenido un descuento del " + currentDiscount + "%!");
@@ -263,7 +271,7 @@
     }
   }
 
-  // ======== Función Canjear Descuento ========
+  // ======== Canjear Descuento ========
   async function canjearDescuento(uid) {
     try {
       const userRef = db.collection('users').doc(uid);
@@ -289,7 +297,7 @@
         return;
       }
 
-      // Se canjea: reiniciar a stamps=2 (o 0 si prefieres), discount=0
+      // Se canjea: reiniciamos a stamps=2 y discount=0
       stamps = 2;
       currentDiscount = 0;
       await userRef.update({ stamps, currentDiscount });
@@ -299,13 +307,12 @@
     }
   }
 
-  // ======== Función para generar descuentos aleatorios (igual que en cliente) ========
   function getRandomDiscount() {
     const rand = Math.random() * 100;
-    if (rand < 50) return 10;     // 50% prob
-    if (rand < 80) return 15;     // 30% prob
-    if (rand < 95) return 25;     // 15% prob
-    return 50;                    // 5% prob
+    if (rand < 50) return 10;
+    if (rand < 80) return 15;
+    if (rand < 95) return 25;
+    return 50;
   }
   </script>
 </body>
