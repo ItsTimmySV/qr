@@ -99,7 +99,9 @@
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <script>
-  // Inicializar Firebase
+  // ========================
+  //   Configuración Firebase
+  // ========================
   const firebaseConfig = {
     apiKey: "AIzaSyBV7aFTNp8BNZoT-3kJvOWhrR5fA_mrUos",
     authDomain: "techcard-ac30e.firebaseapp.com",
@@ -113,7 +115,9 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // DOM
+  // =========================
+  //   Variables DOM
+  // =========================
   const adminAuthContainer = document.getElementById('admin-auth-container');
   const adminLoginForm = document.getElementById('adminLoginForm');
   const adminContent = document.getElementById('admin-content');
@@ -121,14 +125,19 @@
   const purchaseBtn = document.getElementById('purchaseBtn');
   const redeemBtn = document.getElementById('redeemBtn');
 
+  // =========================
+  //  Variables para el escáner
+  // =========================
   let html5QrCode = null;        
   let selectedCameraId = null;   
   let currentMode = null;  // "purchase" o "redeem"
+  
+  // Bandera para evitar lecturas múltiples instantáneas
+  let isProcessing = false;
 
-  // -- Evitar lecturas múltiples --
-  let isProcessing = false; // Bandera para impedir repeticiones rápidas
-
-  // ======== Login Admin ========
+  // =========================
+  //   Login Admin
+  // =========================
   adminLoginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('adminEmail').value;
@@ -141,6 +150,7 @@
     }
   });
 
+  // Observador de estado de Auth
   auth.onAuthStateChanged((user) => {
     if (user) {
       adminAuthContainer.style.display = 'none';
@@ -151,16 +161,21 @@
     }
   });
 
-  // ======== Botón Logout ========
+  // =========================
+  //   Logout
+  // =========================
   logoutBtn.addEventListener('click', async () => {
+    // Paramos el escáner solo si está activo
     if (html5QrCode && html5QrCode._isScanning) {
       await html5QrCode.stop().catch(err => console.warn(err));
     }
-    html5QrCode = null; 
+    html5QrCode = null;
     await auth.signOut();
   });
 
-  // ======== Botones: Registrar / Canjear ========
+  // =========================
+  //   Botones: Compra / Canje
+  // =========================
   purchaseBtn.addEventListener('click', () => {
     currentMode = "purchase";
     startQrScanner();
@@ -171,9 +186,11 @@
     startQrScanner();
   });
 
-  // ======== Inicia / reinicia la cámara y escáner ========
+  // =========================
+  //   Iniciar/Reiniciar la cámara
+  // =========================
   async function startQrScanner() {
-    // Reset de la bandera para permitir nueva lectura
+    // Permitimos nueva lectura
     isProcessing = false;
 
     if (!html5QrCode) {
@@ -187,7 +204,7 @@
         return;
       }
 
-      // Buscar cámara trasera
+      // Buscamos cámara trasera
       selectedCameraId = devices[0].id;
       for (let i = 0; i < devices.length; i++) {
         const label = devices[i].label.toLowerCase();
@@ -197,7 +214,7 @@
         }
       }
 
-      // Iniciamos el escaneo (si ya estaba corriendo, la librería re-inicia)
+      // Iniciamos el escaneo
       await html5QrCode.start(
         selectedCameraId,
         { fps: 10, qrbox: 250 },
@@ -209,37 +226,46 @@
     }
   }
 
-  // ======== onScanSuccess ========
+  // =========================
+  //   onScanSuccess
+  // =========================
   async function onScanSuccess(decodedText, decodedResult) {
-    // -- Evitar lecturas múltiples del mismo QR en milisegundos --
-    if (isProcessing) return; 
+    // Evitar lecturas múltiples del mismo QR en milisegundos
+    if (isProcessing) return;
     isProcessing = true;
 
-    // Paramos la cámara para no seguir leyendo
+    // Detenemos la cámara (para que no lea más frames)
     if (html5QrCode && html5QrCode._isScanning) {
       await html5QrCode.stop().catch(err => console.warn(err));
     }
 
-    // Lógica
     const uid = decodedText.trim();
-    if (currentMode === "purchase") {
-      registrarCompra(uid);
-    } else if (currentMode === "redeem") {
-      canjearDescuento(uid);
+
+    // Procesamos en un try/catch/finally para poder volver a escanear
+    try {
+      if (currentMode === "purchase") {
+        await registrarCompra(uid);
+      } else if (currentMode === "redeem") {
+        await canjearDescuento(uid);
+      }
+    } catch (error) {
+      alert("Error al procesar: " + error.message);
+    } finally {
+      // Reseteamos la bandera y re-iniciamos escáner
+      isProcessing = false;
+      startQrScanner(); 
+      // Así no tenemos que refrescar la página para escanear otro QR
     }
-
-    // Si quieres volver a escanear inmediatamente después,
-    // puedes volver a iniciar la cámara aquí, 
-    // pero en tu caso parece que con un único escaneo es suficiente.
   }
 
-  // ======== onScanFailure ========
   function onScanFailure(error) {
-    // Se llama repetidamente si no detecta un QR
-    // No hacemos nada
+    // Se llama varias veces por segundo si no detecta QR
   }
 
-  // ======== Registrar Compra ========
+  // =========================
+  //  Funciones de Firestore
+  // =========================
+
   async function registrarCompra(uid) {
     const purchaseAmount = parseFloat(
       prompt("UID escaneado: " + uid + "\nIngresa el monto de la compra:")
@@ -259,10 +285,12 @@
 
       let { stamps = 0, cashback = 0, currentDiscount = 0 } = doc.data();
 
+      // Sumamos sello
       if (stamps < 10) {
         stamps++;
       }
 
+      // Sumamos cashback
       cashback += purchaseAmount * 0.05;
 
       // Si llega a 10 sellos y no tenía descuento
@@ -281,7 +309,6 @@
     }
   }
 
-  // ======== Canjear Descuento ========
   async function canjearDescuento(uid) {
     try {
       const userRef = db.collection('users').doc(uid);
@@ -290,6 +317,7 @@
         alert("El usuario con UID '" + uid + "' no existe.");
         return;
       }
+
       let { stamps = 0, currentDiscount = 0 } = doc.data();
 
       if (currentDiscount <= 0) {
@@ -317,13 +345,12 @@
     }
   }
 
-  // ======== getRandomDiscount ========
   function getRandomDiscount() {
     const rand = Math.random() * 100;
-    if (rand < 50) return 10;
-    if (rand < 80) return 15;
-    if (rand < 95) return 25;
-    return 50;
+    if (rand < 50) return 10;   // 50% prob
+    if (rand < 80) return 15;   // 30% prob
+    if (rand < 95) return 25;   // 15% prob
+    return 50;                  // 5% prob
   }
   </script>
 </body>
