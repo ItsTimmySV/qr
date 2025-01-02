@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>TechZone.sv - Panel de Administración</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
     body {
       font-family: 'Arial', sans-serif;
@@ -60,7 +61,6 @@
       background: #2980b9;
     }
 
-    /* Ajuste para pantallas pequeñas */
     @media (max-width: 600px) {
       #qr-reader {
         width: 90vw;
@@ -85,12 +85,15 @@
     <p>Escanea el QR del cliente para:</p>
     <button id="purchaseBtn" class="button">Registrar Compra</button>
     <button id="redeemBtn" class="button">Canjear Descuento</button>
+    <!-- Nuevo botón para canjear cashback -->
+    <button id="redeemCashbackBtn" class="button">Canjear Cashback</button>
+    
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
     <button id="logoutBtn" class="button">Cerrar Sesión</button>
   </div>
 
-  <!-- Firebase SDK (compat) -->
+  <!-- Firebase (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
@@ -113,25 +116,24 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
 
-  // DOM
   const adminAuthContainer = document.getElementById('admin-auth-container');
   const adminLoginForm = document.getElementById('adminLoginForm');
   const adminContent = document.getElementById('admin-content');
   const logoutBtn = document.getElementById('logoutBtn');
+
   const purchaseBtn = document.getElementById('purchaseBtn');
   const redeemBtn = document.getElementById('redeemBtn');
+  const redeemCashbackBtn = document.getElementById('redeemCashbackBtn');
 
-  let html5QrCode = null;        
-  let selectedCameraId = null;   
-  let currentMode = null;  // "purchase" o "redeem"
-  let isProcessing = false; // Para evitar lecturas múltiples
+  let html5QrCode = null;
+  let selectedCameraId = null;
+  let currentMode = null; // "purchase", "redeemDiscount" o "redeemCashback"
+  let isProcessing = false; // Evitar lecturas múltiples
 
-  // ======== Login Admin ========
   adminLoginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('adminEmail').value;
     const password = document.getElementById('adminPassword').value;
-
     try {
       await auth.signInWithEmailAndPassword(email, password);
     } catch (error) {
@@ -161,16 +163,17 @@
     currentMode = "purchase";
     startQrScanner();
   });
-
   redeemBtn.addEventListener('click', () => {
-    currentMode = "redeem";
+    currentMode = "redeemDiscount";
+    startQrScanner();
+  });
+  redeemCashbackBtn.addEventListener('click', () => {
+    currentMode = "redeemCashback";
     startQrScanner();
   });
 
   async function startQrScanner() {
-    // Permitimos nueva lectura
     isProcessing = false;
-
     if (!html5QrCode) {
       html5QrCode = new Html5Qrcode("qr-reader");
     }
@@ -181,8 +184,6 @@
         alert("No se encontró ninguna cámara disponible.");
         return;
       }
-
-      // Buscamos cámara trasera
       selectedCameraId = devices[0].id;
       for (let i = 0; i < devices.length; i++) {
         const label = devices[i].label.toLowerCase();
@@ -191,7 +192,6 @@
           break;
         }
       }
-
       await html5QrCode.start(
         selectedCameraId,
         { fps: 10, qrbox: 250 },
@@ -199,9 +199,8 @@
         onScanFailure
       );
     } catch (err) {
-      // Silenciamos NotReadableError para no mostrar alerta
       if (err.name === "NotReadableError") {
-        console.warn("Cámara ocupada o no accesible (NotReadableError). Ignorando.");
+        console.warn("Cámara ocupada (NotReadableError).");
       } else {
         alert("No se pudo acceder a la cámara: " + err);
       }
@@ -217,25 +216,28 @@
     }
 
     const uid = decodedText.trim();
-
     try {
       if (currentMode === "purchase") {
         await registrarCompra(uid);
-      } else if (currentMode === "redeem") {
+      } else if (currentMode === "redeemDiscount") {
         await canjearDescuento(uid);
+      } else if (currentMode === "redeemCashback") {
+        await canjearCashback(uid);
       }
     } catch (error) {
       alert("Error al procesar: " + error.message);
     } finally {
       isProcessing = false;
-      startQrScanner(); 
+      // Si quieres seguir escaneando más clientes sin refrescar:
+      startQrScanner();
     }
   }
 
   function onScanFailure(error) {
-    // Escaneo fallido en un frame, no hacemos nada
+    // Se llama repetidamente si no detecta QR
   }
 
+  // ================== Función Registrar Compra =====================
   async function registrarCompra(uid) {
     const purchaseAmount = parseFloat(
       prompt("UID escaneado: " + uid + "\nIngresa el monto de la compra:")
@@ -266,15 +268,14 @@
       }
 
       await userRef.update({ stamps, cashback, currentDiscount });
-      alert(
-        "Compra registrada.\nSello(s): " + stamps +
-        "\nCashback: $" + cashback.toFixed(2)
-      );
+      alert("Compra registrada.\nSello(s): " + stamps + 
+            "\nCashback: $" + cashback.toFixed(2));
     } catch (err) {
       alert("Error al registrar compra: " + err.message);
     }
   }
 
+  // ================== Función Canjear Descuento =====================
   async function canjearDescuento(uid) {
     try {
       const userRef = db.collection('users').doc(uid);
@@ -283,8 +284,8 @@
         alert("El usuario con UID '" + uid + "' no existe.");
         return;
       }
-
       let { stamps = 0, currentDiscount = 0 } = doc.data();
+
       if (currentDiscount <= 0) {
         alert("Este usuario no tiene un descuento activo que canjear.");
         return;
@@ -306,6 +307,39 @@
       alert("¡Descuento canjeado! Sellos reiniciados a 2.");
     } catch (err) {
       alert("Error al canjear descuento: " + err.message);
+    }
+  }
+
+  // ================== Función Canjear Cashback (nueva) =====================
+  async function canjearCashback(uid) {
+    try {
+      const userRef = db.collection('users').doc(uid);
+      const doc = await userRef.get();
+      if (!doc.exists) {
+        alert("El usuario con UID '" + uid + "' no existe.");
+        return;
+      }
+      let { cashback = 0 } = doc.data();
+
+      if (cashback <= 0) {
+        alert("Este usuario no tiene cashback acumulado.");
+        return;
+      }
+
+      const confirmar = confirm(
+        "UID escaneado: " + uid +
+        `\nCashback actual: $${cashback.toFixed(2)}` +
+        "\n¿Deseas canjearlo y ponerlo a $0?"
+      );
+      if (!confirmar) {
+        alert("Operación cancelada.");
+        return;
+      }
+
+      await userRef.update({ cashback: 0 });
+      alert("¡Cashback canjeado! El saldo se ha puesto a $0.");
+    } catch (err) {
+      alert("Error al canjear cashback: " + err.message);
     }
   }
 
