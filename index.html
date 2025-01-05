@@ -310,38 +310,51 @@
     }
   }
 
-  // ================== Función Canjear Cashback (nueva) =====================
-  async function canjearCashback(uid) {
+// ================== Función Canjear Cashback (actualizada) =====================
+async function canjearCashback(uid) {
     try {
-      const userRef = db.collection('users').doc(uid);
-      const doc = await userRef.get();
-      if (!doc.exists) {
-        alert("El usuario con UID '" + uid + "' no existe.");
-        return;
-      }
-      let { cashback = 0 } = doc.data();
+        const userRef = db.collection('users').doc(uid);
+        const doc = await userRef.get();
+        if (!doc.exists) {
+            alert("El usuario con UID '" + uid + "' no existe.");
+            return;
+        }
+        let { cashback = 0 } = doc.data();
 
-      if (cashback <= 0) {
-        alert("Este usuario no tiene cashback acumulado.");
-        return;
-      }
+        if (cashback <= 0) {
+            alert("Este usuario no tiene cashback acumulado.");
+            return;
+        }
 
-      const confirmar = confirm(
-        "UID escaneado: " + uid +
-        `\nCashback actual: $${cashback.toFixed(2)}` +
-        "\n¿Deseas canjearlo y ponerlo a $0?"
-      );
-      if (!confirmar) {
-        alert("Operación cancelada.");
-        return;
-      }
+        // Preguntar cuánto cashback desea canjear
+        const cantidadACanjear = parseFloat(prompt(
+            `UID escaneado: ${uid}\nCashback actual: $${cashback.toFixed(2)}\n` +
+            "Ingresa la cantidad de cashback que deseas canjear:"
+        ));
 
-      await userRef.update({ cashback: 0 });
-      alert("¡Cashback canjeado! El saldo se ha puesto a $0.");
+        if (isNaN(cantidadACanjear) || cantidadACanjear <= 0) {
+            alert("Cantidad inválida. Operación cancelada.");
+            return;
+        }
+
+        if (cantidadACanjear > cashback) {
+            alert("La cantidad ingresada excede el cashback disponible.");
+            return;
+        }
+
+        // Actualizar el cashback restante
+        const nuevoCashback = cashback - cantidadACanjear;
+        await userRef.update({ cashback: nuevoCashback });
+
+        alert(
+            `¡Cashback canjeado! Se han canjeado $${cantidadACanjear.toFixed(2)}.\n` +
+            `Cashback restante: $${nuevoCashback.toFixed(2)}.`
+        );
     } catch (err) {
-      alert("Error al canjear cashback: " + err.message);
+        alert("Error al canjear cashback: " + err.message);
     }
-  }
+}
+
 
   function getRandomDiscount() {
     const rand = Math.random() * 100;
