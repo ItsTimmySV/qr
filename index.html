@@ -82,7 +82,7 @@
   border: 1px solid #ddd;
   border-radius: 5px;
 }
-
+f
 .referral-item button {
   background: #3498db;
   color: white;
@@ -275,41 +275,75 @@
 
   // ================== Función Registrar Compra =====================
   async function registrarCompra(uid) {
-    const purchaseAmount = parseFloat(
-      prompt("UID escaneado: " + uid + "\nIngresa el monto de la compra:")
-    );
-    if (isNaN(purchaseAmount) || purchaseAmount <= 0) {
-      alert("Monto inválido. Operación cancelada.");
+  const purchaseAmount = parseFloat(
+    prompt("UID escaneado: " + uid + "\nIngresa el monto de la compra:")
+  );
+  if (isNaN(purchaseAmount) || purchaseAmount <= 0) {
+    alert("Monto inválido. Operación cancelada.");
+    return;
+  }
+
+  try {
+    const userRef = db.collection('users').doc(uid);
+    const doc = await userRef.get();
+    if (!doc.exists) {
+      alert("El usuario con UID '" + uid + "' no existe.");
       return;
     }
 
-    try {
-      const userRef = db.collection('users').doc(uid);
-      const doc = await userRef.get();
-      if (!doc.exists) {
-        alert("El usuario con UID '" + uid + "' no existe.");
-        return;
+    let { 
+      stamps = 0, 
+      cashback = 0, 
+      currentDiscount = 0, 
+      firstPurchaseCompleted = false,
+      referredBy = null 
+    } = doc.data();
+
+    // Verificar si es la primera compra y hay un código de referido
+    if (!firstPurchaseCompleted && referredBy) {
+      // Buscar al usuario que refirió
+      const referrerQuery = await db.collection('users')
+        .where('referralCode', '==', referredBy)
+        .get();
+
+      if (!referrerQuery.empty) {
+        const referrerDoc = referrerQuery.docs[0];
+        // Dar el cashback al referidor
+        await db.collection('users').doc(referrerDoc.id).update({
+          referralCount: firebase.firestore.FieldValue.increment(1),
+          cashback: firebase.firestore.FieldValue.increment(2) // $2 de cashback
+        });
+        alert("¡Cashback de $2 otorgado al referidor!");
       }
-
-      let { stamps = 0, cashback = 0, currentDiscount = 0 } = doc.data();
-
-      if (stamps < 10) {
-        stamps++;
-      }
-      cashback += purchaseAmount * 0.05;
-
-      if (stamps === 10 && currentDiscount === 0) {
-        currentDiscount = getRandomDiscount();
-        alert("¡El usuario ha obtenido un descuento del " + currentDiscount + "%!");
-      }
-
-      await userRef.update({ stamps, cashback, currentDiscount });
-      alert("Compra registrada.\nSello(s): " + stamps + 
-            "\nCashback: $" + cashback.toFixed(2));
-    } catch (err) {
-      alert("Error al registrar compra: " + err.message);
     }
+
+    // Actualizar datos del usuario
+    if (stamps < 10) {
+      stamps++;
+    }
+    cashback += purchaseAmount * 0.05;
+
+    if (stamps === 10 && currentDiscount === 0) {
+      currentDiscount = getRandomDiscount();
+      alert("¡El usuario ha obtenido un descuento del " + currentDiscount + "%!");
+    }
+
+    // Marcar que ya completó su primera compra
+    await userRef.update({ 
+      stamps, 
+      cashback, 
+      currentDiscount,
+      firstPurchaseCompleted: true // Marcar primera compra como completada
+    });
+
+    alert("Compra registrada.\nSello(s): " + stamps + 
+          "\nCashback: $" + cashback.toFixed(2));
+
+  } catch (err) {
+    alert("Error al registrar compra: " + err.message);
+    console.error("Error detallado:", err);
   }
+}
 
   // ================== Función Canjear Descuento =====================
   async function canjearDescuento(uid) {
