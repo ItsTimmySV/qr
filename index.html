@@ -87,6 +87,7 @@
     <button id="redeemBtn" class="button">Canjear Descuento</button>
     <!-- Nuevo botón para canjear cashback -->
     <button id="redeemCashbackBtn" class="button">Canjear Cashback</button>
+    <button id="viewReferralsBtn" class="button">Ver Estadísticas de Referidos</button>
     
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
@@ -363,6 +364,57 @@ async function canjearCashback(uid) {
     if (rand < 95) return 25;
     return 50;
   }
+
+  // Añadir al final del script existente:
+document.getElementById('viewReferralsBtn').addEventListener('click', async () => {
+  try {
+    const usersSnapshot = await db.collection('users').get();
+    const stats = {
+      totalReferrals: 0,
+      topReferrers: []
+    };
+
+    usersSnapshot.forEach(doc => {
+      const userData = doc.data();
+      if (userData.referralCount > 0) {
+        stats.totalReferrals += userData.referralCount;
+        stats.topReferrers.push({
+          name: userData.name,
+          count: userData.referralCount,
+          code: userData.referralCode
+        });
+      }
+    });
+
+    // Ordenar por cantidad de referidos
+    stats.topReferrers.sort((a, b) => b.count - a.count);
+
+    // Mostrar estadísticas
+    const statsDiv = document.getElementById('referralStats');
+    statsDiv.innerHTML = `
+      <p><strong>Total de Referidos:</strong> ${stats.totalReferrals}</p>
+      <h3>Top Referidores:</h3>
+      <ul>
+        ${stats.topReferrers.map(referrer => `
+          <li>${referrer.name} - ${referrer.count} referidos (Código: ${referrer.code})</li>
+        `).join('')}
+      </ul>
+    `;
+
+    document.getElementById('referralStatsModal').style.display = 'block';
+  } catch (error) {
+    alert('Error al cargar estadísticas: ' + error.message);
+  }
+});
+
+function closeReferralStats() {
+  document.getElementById('referralStatsModal').style.display = 'none';
+}s
   </script>
+  <div id="referralStatsModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.2); max-width: 80%; max-height: 80%; overflow-y: auto;">
+    <h2>Estadísticas de Referidos</h2>
+    <div id="referralStats"></div>
+    <button onclick="closeReferralStats()" class="button">Cerrar</button>
+  </div>
 </body>
 </html>
