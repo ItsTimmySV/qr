@@ -122,7 +122,6 @@ f
 <!-- Añadir este código en admin.html dentro del div admin-content -->
 <div class="admin-section">
   <h2>Gestión de Referidos</h2>
-  <button onclick="verificarReferidos()" class="button">Verificar Referidos Pendientes</button>
   <div id="pendingReferrals"></div>
 </div>
 
@@ -274,7 +273,8 @@ f
   }
 
   // ================== Función Registrar Compra =====================
-  async function registrarCompra(uid) {
+// 2. Modificar la función registrarCompra en admin.html:
+async function registrarCompra(uid) {
   const purchaseAmount = parseFloat(
     prompt("UID escaneado: " + uid + "\nIngresa el monto de la compra:")
   );
@@ -308,12 +308,12 @@ f
 
       if (!referrerQuery.empty) {
         const referrerDoc = referrerQuery.docs[0];
-        // Dar el cashback al referidor
+        // Dar el cashback al referidor y aumentar su contador
         await db.collection('users').doc(referrerDoc.id).update({
           referralCount: firebase.firestore.FieldValue.increment(1),
           cashback: firebase.firestore.FieldValue.increment(2) // $2 de cashback
         });
-        alert("¡Cashback de $2 otorgado al referidor!");
+        alert("¡Primera compra detectada! Cashback de $2 otorgado al referidor.");
       }
     }
 
@@ -333,7 +333,7 @@ f
       stamps, 
       cashback, 
       currentDiscount,
-      firstPurchaseCompleted: true // Marcar primera compra como completada
+      firstPurchaseCompleted: true 
     });
 
     alert("Compra registrada.\nSello(s): " + stamps + 
@@ -481,69 +481,9 @@ function closeReferralStats() {
 }
 
 
-// En el código del administrador (admin.html), añadir estas funciones:
-async function verificarReferidos() {
-  try {
-    const usersSnapshot = await db.collection('users').get();
-    const pendingReferrals = [];
 
-    usersSnapshot.forEach(doc => {
-      const userData = doc.data();
-      if (userData.referredBy && !userData.referralProcessed) {
-        pendingReferrals.push({
-          userId: doc.id,
-          ...userData
-        });
-      }
-    });
 
-    // Mostrar referidos pendientes
-    const referralsList = pendingReferrals.map(user => `
-      <div class="referral-item">
-        <p>Usuario: ${user.name} (${user.email})</p>
-        <p>Código usado: ${user.referredBy}</p>
-        <button onclick="procesarReferido('${user.userId}', '${user.referredBy}')">
-          Procesar Referido
-        </button>
-      </div>
-    `).join('');
 
-    document.getElementById('pendingReferrals').innerHTML = referralsList || 'No hay referidos pendientes';
-  } catch (error) {
-    console.error("Error al verificar referidos:", error);
-    alert("Error al cargar referidos pendientes");
-  }
-}
-
-async function procesarReferido(userId, referralCode) {
-  try {
-    // Buscar al usuario que refirió
-    const referrerQuery = await db.collection('users')
-      .where('referralCode', '==', referralCode)
-      .get();
-
-    if (!referrerQuery.empty) {
-      const referrerDoc = referrerQuery.docs[0];
-      
-      // Actualizar al referidor
-      await db.collection('users').doc(referrerDoc.id).update({
-        referralCount: firebase.firestore.FieldValue.increment(1),
-        cashback: firebase.firestore.FieldValue.increment(2)
-      });
-
-      // Marcar como procesado
-      await db.collection('users').doc(userId).update({
-        referralProcessed: true
-      });
-
-      alert('Referido procesado exitosamente');
-      verificarReferidos(); // Actualizar la lista
-    }
-  } catch (error) {
-    console.error("Error al procesar referido:", error);
-    alert("Error al procesar referido");
-  }
-}
 
 
 
