@@ -115,15 +115,12 @@ f
     <!-- Nuevo botón para canjear cashback -->
     <button id="redeemCashbackBtn" class="button">Canjear Cashback</button>
     <button id="viewReferralsBtn" class="button">Ver Estadísticas de Referidos</button>
+    // Añadir este botón en el panel de administración (admin.html)
+<button id="updateExistingUsers" class="button">Actualizar Usuarios Existentes</button>
     
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
 
-<!-- Añadir este código en admin.html dentro del div admin-content -->
-<div class="admin-section">
-  <h2>Gestión de Referidos</h2>
-  <div id="pendingReferrals"></div>
-</div>
 
     <button id="logoutBtn" class="button">Cerrar Sesión</button>
   </div>
@@ -481,7 +478,49 @@ function closeReferralStats() {
 }
 
 
+// Añadir esta función en el script
+document.getElementById('updateExistingUsers').addEventListener('click', async () => {
+  try {
+    const usersSnapshot = await db.collection('users').get();
+    let updatedCount = 0;
 
+    for (const doc of usersSnapshot.docs) {
+      const userData = doc.data();
+      const updates = {};
+
+      // Verificar y añadir campos faltantes
+      if (!userData.referralCode) {
+        updates.referralCode = generateReferralCode(userData.name || 'User');
+      }
+      if (!userData.hasOwnProperty('referralCount')) {
+        updates.referralCount = 0;
+      }
+      if (!userData.hasOwnProperty('referredBy')) {
+        updates.referredBy = null;
+      }
+      if (!userData.hasOwnProperty('firstPurchaseCompleted')) {
+        updates.firstPurchaseCompleted = true; // Para usuarios existentes asumimos que ya compraron
+      }
+
+      // Solo actualizar si hay campos que añadir
+      if (Object.keys(updates).length > 0) {
+        await db.collection('users').doc(doc.id).update(updates);
+        updatedCount++;
+      }
+    }
+
+    alert(`Actualización completada. ${updatedCount} usuarios actualizados.`);
+  } catch (error) {
+    console.error('Error al actualizar usuarios:', error);
+    alert('Error al actualizar usuarios: ' + error.message);
+  }
+});
+
+function generateReferralCode(name) {
+  const cleanName = name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase();
+  const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `${cleanName}${randomNum}`;
+}
 
 
 
