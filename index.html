@@ -68,6 +68,33 @@
         margin-top: 10px;
       }
     }
+
+    .admin-section {
+  margin-top: 20px;
+  padding: 15px;
+  background: #fff;
+  border-radius: 10px;
+}
+
+.referral-item {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.referral-item button {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.referral-item button:hover {
+  background: #2980b9;
+}
   </style>
 </head>
 <body>
@@ -91,6 +118,14 @@
     
     <div id="qr-reader"></div>
     <div id="qr-reader-results"></div>
+
+<!-- Añadir este código en admin.html dentro del div admin-content -->
+<div class="admin-section">
+  <h2>Gestión de Referidos</h2>
+  <button onclick="verificarReferidos()" class="button">Verificar Referidos Pendientes</button>
+  <div id="pendingReferrals"></div>
+</div>
+
     <button id="logoutBtn" class="button">Cerrar Sesión</button>
   </div>
 
