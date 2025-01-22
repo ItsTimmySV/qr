@@ -295,21 +295,29 @@ async function registrarCompra(uid) {
       referredBy = null 
     } = doc.data();
 
-    // Verificar si es la primera compra y hay un código de referido
-    if (!firstPurchaseCompleted && referredBy) {
-      // Buscar al usuario que refirió
+    // Si es primera compra, dar $1 al usuario
+    if (!firstPurchaseCompleted) {
+      cashback += 1;
+    }
+
+    // Verificar si hay referidor y procesar su cashback
+    if (referredBy) {
       const referrerQuery = await db.collection('users')
         .where('referralCode', '==', referredBy)
         .get();
 
       if (!referrerQuery.empty) {
         const referrerDoc = referrerQuery.docs[0];
-        // Dar el cashback al referidor y aumentar su contador
+        const bonusAmount = !firstPurchaseCompleted ? 2 : 0.25;
         await db.collection('users').doc(referrerDoc.id).update({
           referralCount: firebase.firestore.FieldValue.increment(1),
-          cashback: firebase.firestore.FieldValue.increment(2) // $2 de cashback
+          cashback: firebase.firestore.FieldValue.increment(bonusAmount)
         });
-        alert("¡Primera compra detectada! Cashback de $2 otorgado al referidor.");
+
+        const message = !firstPurchaseCompleted 
+          ? "¡Primera compra detectada! Cashback de $2 otorgado al referidor."
+          : `Cashback de $0.25 otorgado al referidor.`;
+        alert(message);
       }
     }
 
@@ -324,7 +332,6 @@ async function registrarCompra(uid) {
       alert("¡El usuario ha obtenido un descuento del " + currentDiscount + "%!");
     }
 
-    // Marcar que ya completó su primera compra
     await userRef.update({ 
       stamps, 
       cashback, 
