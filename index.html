@@ -288,17 +288,15 @@ async function registrarCompra(uid) {
     }
 
     let { 
-      stamps = 0, 
-      cashback = 0, 
-      currentDiscount = 0, 
-      firstPurchaseCompleted = false,
-      referredBy = null 
-    } = doc.data();
+  stamps = 0, 
+  cashback = 0, 
+  currentDiscount = 0, 
+  firstPurchaseCompleted = false,
+  referredBy = null 
+} = doc.data();
 
-    // Si es primera compra, dar $1 al usuario
-    if (!firstPurchaseCompleted) {
-      cashback += 1;
-    }
+// Ya NO dar $1 extra en primera compra porque ya lo tiene inicial
+cashback += purchaseAmount * 0.05; // Solo añadir el 5% de la compra
 
     // Verificar si hay referidor y procesar su cashback
     if (referredBy) {
